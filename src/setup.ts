@@ -1,7 +1,8 @@
-import fs from 'fs-promise';
+import fs from 'fs-extra';
 import path from 'path';
 import ppath from 'persist-path';
 import mkdirp from 'mkdirp';
+import crypto from 'crypto';
 import { Device } from './network';
 
 export const getKeyFilePath = (accountId: string, uuid: string) => {
@@ -29,7 +30,14 @@ export const writeStoredConfig = async (accountId: string, config: Config) => {
 };
 
 const getConfigFolder = (accountId: string) => {
-	const prefix = ppath(`lgtv2/${accountId}`);
+	const prefix = ppath(`lgtv/${md5(accountId)}`);
 	mkdirp(prefix);
 	return prefix;
+};
+
+export const md5 = (str: string) => {
+	return crypto
+		.createHash('md5')
+		.update(str)
+		.digest('hex');
 };

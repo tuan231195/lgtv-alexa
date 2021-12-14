@@ -1,6 +1,8 @@
 import LGTV from 'lgtv2';
 import Logger from 'bunyan';
 import { promisify } from 'util';
+import { getStoredConfig, writeStoredConfig } from './setup';
+import { scanOneDevice } from './network';
 import { rootLogger } from './logger';
 import { sleep, timeout as timeoutPromise } from './utils';
 const wol = require('wol');
@@ -12,57 +14,79 @@ interface TvConfig {
 }
 
 export class LgTvClient {
-	private readonly client: LGTV;
-	private isConnected = false;
-	private isConnecting: boolean;
+	private connection: LGTV | null = null;
 	private readonly url: string;
 	private logger: Logger;
+	private isConnected = false;
+	private listeners: any[] = [];
 
 	constructor(private readonly tvConfig: TvConfig) {
 		this.url = `ws://${tvConfig.ip}:3000`;
-		this.client = LGTV({
-			url: this.url,
-		});
-		this.isConnecting = true;
 		this.logger = rootLogger.child({ tvConfig });
 	}
 
-	connect(timeout = 5000) {
+	private connect(timeout = 5000): Promise<LGTV> {
 		const errorPromise = timeoutPromise(
 			new Error('Connect timeout'),
 			timeout
 		);
-		const connectPromise = new Promise<void>((resolve, reject) => {
-			if (this.isConnected) {
-				return resolve();
+		const connectPromise: Promise<LGTV> = new Promise((resolve, reject) => {
+			if (this.isConnected && this.connection) {
+				resolve(this.connection);
 			}
-			if (!this.isConnected && !this.isConnecting) {
-				this.client.connect(this.url);
-			}
-			this.isConnecting = true;
-			this.client.on('connect', () => {
-				this.logger.info('TV Connected');
-				this.isConnected = true;
-				this.isConnecting = false;
-				resolve();
-			});
-			this.client.on('error', err => {
-				this.logger.error({ err }, 'Got TV connection error');
-				this.isConnecting = false;
-				this.isConnected = false;
-				reject(err);
-			});
+			if (!this.connection) {
+				this.connection = LGTV({
+					url: this.url,
+				});
 
-			this.client.on('close', () => {
-				this.logger.error('Client closed connection');
-				this.isConnecting = false;
-				this.isConnected = false;
-				reject(new Error('Client closed connection'));
+				this.connection.on('connect', () => {
+					this.logger.info('TV Connected');
+					this.isConnected = true;
+					this.notifyConnect();
+				});
+				this.connection.on('error', err => {
+					this.logger.error({ err }, 'Got TV connection error');
+					this.isConnected = false;
+					this.notifyConnect(err);
+					this.disconnect();
+				});
+
+				this.connection.on('close', () => {
+					this.logger.error('Client closed connection');
+					this.isConnected = false;
+					this.notifyConnect(new Error('Client closed connection'));
+					this.disconnect();
+				});
+			}
+
+			const unsubscribe = this.onConnect(err => {
+				unsubscribe();
+				if (err) {
+					reject(err);
+				} else {
+					resolve(this.connection!);
+				}
 			});
 		});
 
 		return Promise.race([connectPromise, errorPromise]);
 	}
+
+	private onConnect = listener => {
+		this.listeners.push(listener);
+
+		return () => {
+			this.listeners = this.listeners.filter(
+				current => current !== listener
+			);
+		};
+	};
+
+	private notifyConnect = (err?: Error) => {
+		for (const listener of this.listeners) {
+			listener(err);
+		}
+	};
 
 	async powerOn() {
 		this.logger.info('Powering on TV');
@@ -73,7 +97,7 @@ export class LgTvClient {
 	async powerOff() {
 		this.logger.info('Powering off TV');
 		await this.request('ssap://system/turnOff');
-		this.client.disconnect();
+		this.disconnect();
 	}
 
 	async volumeUp() {
@@ -178,17 +202,37 @@ export class LgTvClient {
 
 	async disconnect() {
 		this.logger.info('Disconnect TV');
-		this.client.disconnect();
+		this.connection?.disconnect();
 		this.isConnected = false;
-		this.isConnecting = false;
 		await sleep(2000);
 	}
 
 	async request(cmd: string, payload?: any) {
-		await this.connect();
-		return promisify(this.client.request.bind(this.client) as any)(
+		const connection = await this.connect();
+		return promisify(connection.request.bind(connection) as any)(
 			cmd,
 			payload
 		);
 	}
 }
+
+export const createLGClient = async (userId: string, tvName = 'TV') => {
+	const existingConfig = await getStoredConfig(userId);
+	const logger = rootLogger.child({ tvName, userId });
+
+	let lgClient: LgTvClient;
+	if (existingConfig[tvName]) {
+		logger.info('Use existing config');
+		lgClient = new LgTvClient(existingConfig[tvName]);
+	} else {
+		logger.info('Discover new device');
+		const { ip, mac, uuid } = await scanOneDevice();
+		const tvConfig = { ip, mac, name: tvName, uuid };
+		lgClient = new LgTvClient(tvConfig);
+		existingConfig[tvName] = tvConfig;
+		logger.info('Updating config');
+		await writeStoredConfig(userId, existingConfig);
+	}
+
+	return lgClient;
+};
