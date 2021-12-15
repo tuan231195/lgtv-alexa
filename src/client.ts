@@ -144,11 +144,6 @@ export class LgTvClient {
 		});
 	}
 
-	async mediaPlay() {
-		this.logger.info('Play Media');
-		await this.request('ssap://media.controls/play');
-	}
-
 	async openApp(title: string) {
 		this.logger.info({ title }, 'Open app');
 
@@ -180,22 +175,27 @@ export class LgTvClient {
 		return app;
 	}
 
-	async mediaStop() {
+	async playMedia() {
+		this.logger.info('Play Media');
+		await this.request('ssap://media.controls/play');
+	}
+
+	async stopMedia() {
 		this.logger.info('Stop Media');
 		await this.request('ssap://media.controls/stop');
 	}
 
-	async mediaPause() {
+	async pauseMedia() {
 		this.logger.info('Pause Media');
 		await this.request('ssap://media.controls/pause');
 	}
 
-	async mediaFastForward() {
+	async fastForwardMedia() {
 		this.logger.info('Fastfoward Media');
 		await this.request('ssap://media.controls/fastForward');
 	}
 
-	async mediaRewind() {
+	async rewindMedia() {
 		this.logger.info('Rewind Media');
 		await this.request('ssap://media.controls/rewind');
 	}

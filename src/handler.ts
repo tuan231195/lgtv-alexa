@@ -2,6 +2,7 @@ import { SQS } from 'aws-sdk';
 import NodeCache from 'node-cache';
 import { createLGClient, LgTvClient } from './client';
 import { rootLogger } from './logger';
+import { resetStoredConfig } from './setup';
 
 const clientCache = new NodeCache({
 	stdTTL: 60,
@@ -23,6 +24,9 @@ export const handleMessage = async (message: SQS.Types.Message) => {
 		const { command, params = [], userId } = JSON.parse(messageBody!);
 		rootLogger.info({ command, params, userId }, 'Handling new command');
 
+		if (command === 'reset') {
+			return resetStoredConfig(userId);
+		}
 		const client: any = await initClient(userId);
 		await client[command](...params);
 		if (command === 'powerOff') {

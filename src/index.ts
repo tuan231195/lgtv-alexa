@@ -3,6 +3,8 @@ import { Consumer } from 'sqs-consumer';
 import { rootLogger } from './logger';
 import { handleMessage } from './handler';
 
+rootLogger.info('Starting app');
+
 const app = Consumer.create({
 	queueUrl: process.env.SQS_QUEUE,
 	handleMessage,

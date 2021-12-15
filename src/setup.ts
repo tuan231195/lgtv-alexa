@@ -5,15 +5,15 @@ import mkdirp from 'mkdirp';
 import crypto from 'crypto';
 import { Device } from './network';
 
-export const getKeyFilePath = (accountId: string, uuid: string) => {
-	const prefix = getConfigFolder(accountId);
+export const getKeyFilePath = (userId: string, uuid: string) => {
+	const prefix = getConfigFolder(userId);
 	return path.resolve(prefix, `keyFile-${uuid}`);
 };
 
 type Config = Record<string, Device>;
 
-export const getStoredConfig = async (accountId: string): Promise<Config> => {
-	const prefix = getConfigFolder(accountId);
+export const getStoredConfig = async (userId: string): Promise<Config> => {
+	const prefix = getConfigFolder(userId);
 
 	const configFile = path.resolve(prefix, 'config.json');
 	if (await fs.exists(configFile)) {
@@ -22,15 +22,22 @@ export const getStoredConfig = async (accountId: string): Promise<Config> => {
 	return {};
 };
 
-export const writeStoredConfig = async (accountId: string, config: Config) => {
-	const prefix = getConfigFolder(accountId);
+export const resetStoredConfig = (userId: string) => {
+	const prefix = getConfigFolder(userId);
+	const configFile = path.resolve(prefix, 'config.json');
+
+	return fs.remove(configFile);
+};
+
+export const writeStoredConfig = async (userId: string, config: Config) => {
+	const prefix = getConfigFolder(userId);
 
 	const configFile = path.resolve(prefix, 'config.json');
 	await fs.writeJSON(configFile, config);
 };
 
-const getConfigFolder = (accountId: string) => {
-	const prefix = ppath(`lgtv/${md5(accountId)}`);
+const getConfigFolder = (userId: string) => {
+	const prefix = ppath(`lgtv/${md5(userId)}`);
 	mkdirp(prefix);
 	return prefix;
 };
