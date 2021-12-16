@@ -4,6 +4,8 @@ import { promisify } from 'util';
 import { getStoredConfig, writeStoredConfig } from './setup';
 import { scanOneDevice } from './network';
 import { rootLogger } from './logger';
+import { getYoutubeURL, searchYoutubeVideos } from './youtube';
+import { getMovies } from './netflix';
 import { sleep, timeout as timeoutPromise } from './utils';
 const wol = require('wol');
 
@@ -144,12 +146,13 @@ export class LgTvClient {
 		});
 	}
 
-	async openApp(title: string) {
-		this.logger.info({ title }, 'Open app');
+	async openApp(title: string, params?: any) {
+		this.logger.info({ title, params }, 'Open app');
 
 		const app = await this.findApp(title);
 		await this.request('ssap://system.launcher/launch', {
 			id: app.id,
+			params,
 		});
 	}
 
@@ -205,6 +208,34 @@ export class LgTvClient {
 		this.connection?.disconnect();
 		this.isConnected = false;
 		await sleep(2000);
+	}
+
+	async openYoutube(title: string) {
+		const [result] = await searchYoutubeVideos(title, 1);
+		const id = result?.raw?.id?.videoId;
+		if (!id) {
+			throw new Error(`Video ${title} not found`);
+		}
+
+		const url = getYoutubeURL(id);
+		await this.openApp('youtube', { contentTarget: url });
+	}
+
+	async openNetflix(title: string) {
+		const movies = await getMovies();
+		console.log(movies);
+
+		const movie = movies.find(({ movie: currentTitle }) =>
+			currentTitle.toLowerCase().includes(title.toLowerCase())
+		);
+		const id = movie?.id;
+		if (!id) {
+			throw new Error(`Movie ${title} not found`);
+		}
+
+		await this.openApp('netflix', {
+			contentTarget: `m=https%3A%2F%2Fapi.netflix.com%2Fcatalog%2Ftitles%2Fmovies%2F${id}&source_type=4`,
+		});
 	}
 
 	async request(cmd: string, payload?: any) {
